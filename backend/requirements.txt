@@ -1,3 +1,4 @@
 mcp
 anthropic
 python-dotenv
+websockets
