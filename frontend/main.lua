@@ -2,13 +2,12 @@ local loveFrames = require("LoveFrames/loveframes")
 local width = love.graphics.getWidth()
 local height = love.graphics.getHeight()
 
-local sideBarWidth = width * 0.25
-
+local sideBarWidth
 local font
 
 local function updateFont()
     local h = love.graphics.getHeight()
-    local size = math.floor(h * 0.05)
+    local size = math.floor(h * 0.03)
     font = love.graphics.newFont(size)
     love.graphics.setFont(font)
 end
@@ -37,15 +36,29 @@ function love.draw()
     width = love.graphics.getWidth()
     height = love.graphics.getHeight()
 
-    love.graphics.setColor(18/255, 17/255, 51/255)
-    love.graphics.rectangle("fill", 0, 0, width, height * 0.08)
-    love.graphics.rectangle("fill", 0, 0, sideBarWidth, height)
+    updateFont()
 
+    local desiredSideBarWidth = width * 0.25
+    local maxSideBarWidth = 300
+    sideBarWidth = math.min(desiredSideBarWidth, maxSideBarWidth)
+
+    love.graphics.setColor(18/255, 17/255, 51/255)
+    --Top bar
+    love.graphics.rectangle("fill", 0, 0, width, height * 0.08)
+
+    --Side bar
+    love.graphics.rectangle("fill", 0, height * 0.08, sideBarWidth, height)
+
+    --Bars border
     love.graphics.setColor(197/255, 216/255, 109/255)
-    love.graphics.print("CHAT", 20, 10)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", 0, 0, width, height * 0.08)
+    love.graphics.rectangle("line", 0, height * 0.08, sideBarWidth, height - height*0.08)
+    love.graphics.print("ChispitasGPT", 20, height * 0.021)
 
     love.graphics.setColor(46/255, 41/255, 78/255)
-    love.graphics.rectangle("fill", width * 0.25, height * 0.08, width * 0.75, height * 0.92)
+    --Chat content
+    love.graphics.rectangle("fill", sideBarWidth, height * 0.08, width - sideBarWidth, height * 0.92)
     loveFrames.draw()
 end
 
@@ -71,7 +84,4 @@ end
 
 function love.resize(w, h)
     updateFont()
-    local desireSideBarWidth = w * 0.25
-    local maxSideBarWidth = 300
-    sideBarWidth = math.min(desireSideBarWidth, maxSideBarWidth)
 end
