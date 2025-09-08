@@ -17,7 +17,7 @@ function NetworkManager:connect()
     end
 
     self.client = socket.tcp()
-    self.client:settimeout(5) -- Non-blocking
+    self.client:settimeout(0.1) -- Non-blocking
 
     local success, err = self.client:connect(self.host, self.port)
     if success then
