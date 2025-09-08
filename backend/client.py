@@ -1,6 +1,7 @@
 import asyncio
 import sys
-from typing import Optional
+import json
+from typing import Optional, Dict, Any
 from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
@@ -12,10 +13,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class MCPClient:
-    def __init__(self):
+    def __init__(self, tcp_port: int = 8080):
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic()
+        self.tcp_port = tcp_port
+        self.tcp_server = None
+        self.running = True
 
     async def connect_to_server(self, server_script_path: str):
         is_python = server_script_path.endswith('.py')
@@ -43,6 +47,93 @@ class MCPClient:
         response = await self.session.list_tools()
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])
+
+    async def start_tcp_server(self):
+        """Start TCP server to receive external messages"""
+        self.tcp_server = await asyncio.start_server(
+            self.handle_tcp_client,
+            'localhost',
+            self.tcp_port
+        )
+        print(f"TCP server started on port {self.tcp_port}")
+
+    async def handle_tcp_client(self, reader, writer):
+        """Handle incoming TCP connections and process messages"""
+        client_addr = writer.get_extra_info('peername')
+        print(f"\nTCP client connected: {client_addr}")
+        
+        try:
+            while self.running:
+                # Read message from TCP client
+                data = await reader.read(4096)  # Increased buffer size
+                if not data:
+                    break
+                
+                message = data.decode('utf-8').strip()
+                if not message:
+                    continue
+                    
+                print(f"Received TCP message: {message}")
+                
+                # Process the message and get response
+                try:
+                    response = await self.process_tcp_message(message)
+                    response_data = {
+                        "status": "success",
+                        "data": response
+                    }
+                except Exception as e:
+                    response_data = {
+                        "status": "error",
+                        "error": str(e)
+                    }
+                
+                # Send response back to TCP client
+                response_json = json.dumps(response_data, indent=2) + '\n'
+                writer.write(response_json.encode('utf-8'))
+                await writer.drain()
+                
+        except Exception as e:
+            print(f"Error handling TCP client: {e}")
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            print(f"TCP client disconnected: {client_addr}")
+
+    async def process_tcp_message(self, message: str) -> str:
+        """
+        Process TCP message and convert it to a query for the MCP system
+        
+        Supported formats:
+        1. Plain text query: "What is the weather today?"
+        2. JSON query: {"query": "What is the weather today?", "context": "additional context"}
+        3. Command format: "QUERY: What is the weather today?"
+        """
+        try:
+            # Try to parse as JSON first
+            try:
+                parsed = json.loads(message)
+                if isinstance(parsed, dict) and "query" in parsed:
+                    query = parsed["query"]
+                    # You can add additional context processing here if needed
+                    context = parsed.get("context", "")
+                    full_query = f"{query}\n{context}" if context else query
+                    return await self.process_query(full_query)
+                else:
+                    return await self.process_query(str(parsed))
+            except json.JSONDecodeError:
+                pass
+            
+            # Handle command format
+            if message.startswith("QUERY:"):
+                query = message[6:].strip()
+                return await self.process_query(query)
+            
+            # Handle plain text as direct query
+            return await self.process_query(message)
+            
+        except Exception as e:
+            return f"Error processing TCP message: {str(e)}"
 
     async def process_query(self, query: str) -> str:
         """
@@ -177,14 +268,17 @@ class MCPClient:
         return "\n".join(final_text)    
 
     async def chat_loop(self):
+        """Interactive chat loop for console input"""
         print("\nMCP Client Started!")
         print("Type your queries or 'quit' to exit.")
+        print(f"TCP server also listening on port {self.tcp_port}")
 
-        while True:
+        while self.running:
             try:
                 query = input("\nQuery: ").strip()
 
                 if query.lower() == 'quit':
+                    self.running = False
                     break
 
                 response = await self.process_query(query)
@@ -193,18 +287,52 @@ class MCPClient:
             except Exception as e:
                 print(f"\nError: {str(e)}")
 
+    async def run_with_tcp(self):
+        """Run both console chat and TCP server concurrently"""
+        # Start TCP server
+        await self.start_tcp_server()
+        
+        # Create tasks for both console chat and TCP server
+        chat_task = asyncio.create_task(self.chat_loop())
+        server_task = asyncio.create_task(self.tcp_server.serve_forever())
+        
+        try:
+            # Wait for either task to complete (chat_loop ends on 'quit')
+            done, pending = await asyncio.wait(
+                [chat_task, server_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                    
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+            self.running = False
+
     async def cleanup(self):
+        self.running = False
+        if self.tcp_server:
+            self.tcp_server.close()
+            await self.tcp_server.wait_closed()
         await self.exit_stack.aclose()
 
 async def main():
     if len(sys.argv) < 2:
-        print("sage: pyhton client.py <server_script>")
+        print("Usage: python client.py <server_script> [tcp_port]")
         sys.exit(1)
 
-    client = MCPClient()
+    tcp_port = int(sys.argv[2]) if len(sys.argv) > 2 else 8080
+    
+    client = MCPClient(tcp_port=tcp_port)
     try:
         await client.connect_to_server(sys.argv[1])
-        await client.chat_loop()
+        await client.run_with_tcp()
     finally:
         await client.cleanup()
 

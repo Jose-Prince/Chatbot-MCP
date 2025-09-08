@@ -1,9 +1,13 @@
 Object = require "classic"
 
 loveFrames = require("LoveFrames.loveframes")
+socket = require("socket")
 
 require "components.button"
 require "components.chat"
+
+client = socket.tcp()
+client:settimeout(20)
 
 local width = love.graphics.getWidth()
 local height = love.graphics.getHeight()
@@ -22,6 +26,14 @@ local function updateFont()
 end
 
 function love.load()
+    local host, port = "127.0.0.1", 8080  -- Cambia a tu servidor MCP
+    local success, err = client:connect(host, port)
+    if not success then
+        print("No se pudo conectar:", err)
+    else
+        print("Conectado al servidor MCP")
+    end
+
     love.window.setMode(800, 600, {
         resizable = true,
         minwidth = 400,

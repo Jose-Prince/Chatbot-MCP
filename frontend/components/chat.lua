@@ -17,8 +17,13 @@ function Chat:new(width, height, sideBarWidth)
     local buttonX = x + inputWidth + 10
     local buttonY = y
     self.sendButton = Button(buttonX, buttonY, buttonWidth, buttonHeight, "Enviar", function()
-        print("Texto enviado: " .. self.queryInput.text)
-    end)
+    local mensaje = self.queryInput.text
+    if mensaje ~= "" then
+        self:sendMessage(mensaje)
+        self.queryInput.text = ""
+        self.queryInput.cursorPos = 0
+    end
+end)
 end
 
 function Chat:draw(type, height, width, sideBarWidth)
@@ -43,3 +48,13 @@ function Chat:draw(type, height, width, sideBarWidth)
         print("Bye")
     end
 end
+
+function Chat:sendMessage(message)
+    if client then
+        local ok, err = client:send(message .. "\n")
+        if not ok then
+            print("Error enviando mensaje:", err)
+        end
+    end
+end
+
