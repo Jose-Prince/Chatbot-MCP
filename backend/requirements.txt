@@ -2,3 +2,7 @@ mcp
 anthropic
 python-dotenv
 websockets
+pandas
+scikit-learn
+requests
+steamspypi
