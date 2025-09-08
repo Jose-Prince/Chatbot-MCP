@@ -61,28 +61,6 @@ class MCPClient:
         client_addr = writer.get_extra_info('peername')
         print(f"\nTCP client connected: {client_addr}")
 
-        async def process_message(message: str):
-            try:
-                print(f"Processing message: {message}")
-                response = await self.process_tcp_message(message)
-                response_data = {
-                    "status": "success",
-                    "data": response,
-                    "timestamp": asyncio.get_event_loop().time()
-                }
-                print(f"Response generated: {response}")
-            except Exception as e:
-                print(f"Error processing message: {str(e)}")
-                response_data = {
-                    "status": "error",
-                    "error": str(e),
-                    "timestamp": asyncio.get_event_loop().time()
-                }
-
-            response_json = json.dumps(response_data, ensure_ascii=False) + "\n"
-            writer.write(response_json.encode("utf-8"))
-            await writer.drain()
-
         try:
             while self.running:
                 data = await reader.read(4096)
@@ -93,7 +71,36 @@ class MCPClient:
                     continue
 
                 print(f"Received TCP message: {message}")
-                await process_message(message)
+                
+                # Process the message and send response
+                try:
+                    print(f"Processing message: {message}")
+                    response = await self.process_tcp_message(message)
+                    response_data = {
+                        "status": "success",
+                        "data": response,
+                        "timestamp": asyncio.get_event_loop().time()
+                    }
+                    print(f"Response generated: {response}")
+                except Exception as e:
+                    print(f"Error processing message: {str(e)}")
+                    response_data = {
+                        "status": "error",
+                        "error": str(e),
+                        "timestamp": asyncio.get_event_loop().time()
+                    }
+
+                # Send the response back to frontend
+                response_json = json.dumps(response_data, ensure_ascii=False) + "\n"
+                print(f"Sending response: {response_json.strip()}")
+                
+                try:
+                    writer.write(response_json.encode("utf-8"))
+                    await writer.drain()
+                    print("Response sent successfully!")
+                except Exception as send_error:
+                    print(f"Failed to send response: {send_error}")
+                    break
 
         except ConnectionResetError:
             print(f"TCP client disconnected unexpectedly: {client_addr}")
