@@ -1,9 +1,18 @@
-local loveFrames = require("LoveFrames/loveframes")
+Object = require "classic"
+
+loveFrames = require("LoveFrames.loveframes")
+
+require "components.button"
+require "components.chat"
+
 local width = love.graphics.getWidth()
 local height = love.graphics.getHeight()
 
+local chat
+local createChatButton
 local sideBarWidth
 local font
+local newChat = true
 
 local function updateFont()
     local h = love.graphics.getHeight()
@@ -19,10 +28,16 @@ function love.load()
         minheight = 300
     })
 
-    textinput = loveFrames.Create("textinput")
-    textinput:SetPos( width * 0.3, height - 50)
-    textinput:SetWidth(200)
-    textinput:SetText("Write Here..")
+    local desiredSideBarWidth = width * 0.25
+    local maxSideBarWidth = 300
+    sideBarWidth = math.min(desiredSideBarWidth, maxSideBarWidth)
+
+    createChatButton = Button(10, 100, 200, 40, "New Chat", function()
+        print("Click")
+        newChat = not newChat
+    end)
+
+    chat = Chat(width, height, sideBarWidth)
 
     font = love.graphics.newFont(24)
     love.graphics.setFont(font)
@@ -30,56 +45,72 @@ end
 
 function love.update(dt)
     loveFrames.update(dt)
-end
 
-function love.draw()
+    chat.queryInput:update(dt)
+
     width = love.graphics.getWidth()
     height = love.graphics.getHeight()
-
-    updateFont()
 
     local desiredSideBarWidth = width * 0.25
     local maxSideBarWidth = 300
     sideBarWidth = math.min(desiredSideBarWidth, maxSideBarWidth)
 
-    love.graphics.setColor(18/255, 17/255, 51/255)
-    --Top bar
-    love.graphics.rectangle("fill", 0, 0, width, height * 0.08)
+    createChatButton:SetSize(sideBarWidth - 20, 40)
+    createChatButton:SetPosition(10, height * 0.08 + 10)
+    createChatButton:update(dt)
+end
 
-    --Side bar
+function love.draw()
+    updateFont()
+
+    love.graphics.setColor(18/255, 17/255, 51/255)
+    love.graphics.rectangle("fill", 0, 0, width, height * 0.08)
     love.graphics.rectangle("fill", 0, height * 0.08, sideBarWidth, height)
 
-    --Bars border
     love.graphics.setColor(197/255, 216/255, 109/255)
     love.graphics.setLineWidth(2)
     love.graphics.rectangle("line", 0, 0, width, height * 0.08)
     love.graphics.rectangle("line", 0, height * 0.08, sideBarWidth, height - height*0.08)
     love.graphics.print("ChispitasGPT", 20, height * 0.021)
 
-    love.graphics.setColor(46/255, 41/255, 78/255)
-    --Chat content
-    love.graphics.rectangle("fill", sideBarWidth, height * 0.08, width - sideBarWidth, height * 0.92)
+    createChatButton:draw()
+    chat:draw(newChat, height, width, sideBarWidth)
+
     loveFrames.draw()
 end
 
+function love.textinput(t)
+    chat.queryInput:textinput(t)
+end
+
 function love.mousepressed(x, y, button)
-    loveFrames.mousepressed(x, y, button)
+    local buttonHandled = createChatButton:mousepressed(x, y, button)
+
+    if not buttonHandled then
+        loveFrames.mousepressed(x, y, button)
+    end
+
+    chat.queryInput:mousepressed(x, y, button)
+    chat.sendButton:mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
-    loveFrames.mousereleased(x, y, button)
+    local buttonHandled = createChatButton:mousereleased(x, y, button)
+
+    chat.sendButton:mousereleased(x, y, button)
+
+    if not buttonHandled then
+        loveFrames.mousereleased(x, y, button)
+    end
 end
 
 function love.keypressed(key, unicode)
     loveFrames.keypressed(key, unicode)
+    chat.queryInput:keypressed(key)
 end
 
 function love.keyreleased(key)
     loveFrames.keyreleased(key)
-end
-
-function love.textinput(text)
-    loveFrames.textinput(text)
 end
 
 function love.resize(w, h)
