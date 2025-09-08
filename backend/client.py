@@ -80,19 +80,23 @@ class MCPClient:
                     response = await self.process_tcp_message(message)
                     response_data = {
                         "status": "success",
-                        "data": response
+                        "data": response,
+                        "timestamp": asyncio.get_event_loop().time()
                     }
                 except Exception as e:
                     response_data = {
                         "status": "error",
-                        "error": str(e)
+                        "error": str(e),
+                        "timestamp": asyncio.get_event_loop().time()
                     }
                 
                 # Send response back to TCP client
-                response_json = json.dumps(response_data, indent=2) + '\n'
+                response_json = json.dumps(response_data, ensure_ascii=False) + '\n'
                 writer.write(response_json.encode('utf-8'))
                 await writer.drain()
                 
+        except ConnectionResetError:
+            print(f"TCP client disconnected unexpectedly: {client_addr}")
         except Exception as e:
             print(f"Error handling TCP client: {e}")
         finally:
@@ -134,6 +138,7 @@ class MCPClient:
             
         except Exception as e:
             return f"Error processing TCP message: {str(e)}"
+
 
     async def process_query(self, query: str) -> str:
         """
@@ -275,7 +280,7 @@ class MCPClient:
 
         while self.running:
             try:
-                query = input("\nQuery: ").strip()
+                query = await async_input("\nQuery: ")
 
                 if query.lower() == 'quit':
                     self.running = False
@@ -321,6 +326,11 @@ class MCPClient:
             self.tcp_server.close()
             await self.tcp_server.wait_closed()
         await self.exit_stack.aclose()
+
+async def async_input(prompt: str = "") -> str:
+    print(prompt, end="", flush=True)
+    loop = asyncio.get_event_loop()
+    return (await loop.run_in_executor(None, sys.stdin.readline)).rstrip()
 
 async def main():
     if len(sys.argv) < 2:

@@ -5,9 +5,28 @@ socket = require("socket")
 
 require "components.button"
 require "components.chat"
+require "networkManager"
 
-client = socket.tcp()
-client:settimeout(20)
+function string:trim()
+    return self:match("^%s*(.-)%s*$")
+end
+
+json = {}
+function json.decode(str)
+    -- Very basic JSON parsing - you might want to use a proper JSON library
+    if str:match("^%s*{") then
+        -- Try to parse as JSON object
+        local result = {}
+        -- This is a simplified parser - use a proper JSON library for production
+        for key, value in str:gmatch('"([^"]+)"%s*:%s*"([^"]*)"') do
+            result[key] = value
+        end
+        return result
+    end
+    return nil
+end
+
+networkManager = NetworkManager()
 
 local width = love.graphics.getWidth()
 local height = love.graphics.getHeight()
@@ -26,13 +45,7 @@ local function updateFont()
 end
 
 function love.load()
-    local host, port = "127.0.0.1", 8080  -- Cambia a tu servidor MCP
-    local success, err = client:connect(host, port)
-    if not success then
-        print("No se pudo conectar:", err)
-    else
-        print("Conectado al servidor MCP")
-    end
+    networkManager:connect()
 
     love.window.setMode(800, 600, {
         resizable = true,
@@ -47,6 +60,9 @@ function love.load()
     createChatButton = Button(10, 100, 200, 40, "New Chat", function()
         print("Click")
         newChat = not newChat
+        if newChat then
+            chat.messages = {}
+        end
     end)
 
     chat = Chat(width, height, sideBarWidth)
@@ -57,6 +73,7 @@ end
 
 function love.update(dt)
     loveFrames.update(dt)
+    networkManager:update(dt)
 
     chat.queryInput:update(dt)
 
@@ -119,6 +136,15 @@ end
 function love.keypressed(key, unicode)
     loveFrames.keypressed(key, unicode)
     chat.queryInput:keypressed(key)
+
+    if key == "return" and chat.queryInput.hasFocus then
+        local message = chat.queryInput.text
+        if message ~= "" then
+            chat:sendMessage(message)
+            chat.queryInput.text = ""
+            chat.queryInput.cursorPos = 0
+        end
+    end
 end
 
 function love.keyreleased(key)
@@ -127,4 +153,8 @@ end
 
 function love.resize(w, h)
     updateFont()
+end
+
+function love.quit()
+    networkManager:close()
 end
