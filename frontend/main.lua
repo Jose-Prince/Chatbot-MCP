@@ -1,97 +1,30 @@
 Object = require "classic"
 
+lmdb = require("lightningmdb")
 loveFrames = require("LoveFrames.loveframes")
 socket = require("socket")
 
 require "components.button"
 require "components.chat"
 require "networkManager"
+require "database"
 
 function string:trim()
     return self:match("^%s*(.-)%s*$")
 end
 
--- Improved JSON parsing
 json = {}
 function json.decode(str)
-    if not str or str == "" then
-        return nil
-    end
-    
-    -- Remove whitespace
-    str = str:trim()
-    
-    -- Basic JSON object parser
-    if str:match("^%s*{.*}%s*$") then
+    -- Very basic JSON parsing - you might want to use a proper JSON library
+    if str:match("^%s*{") then
+        -- Try to parse as JSON object
         local result = {}
-        
-        -- Try to extract status
-        local status = str:match('"status"%s*:%s*"([^"]*)"')
-        if status then
-            result.status = status
+        -- This is a simplified parser - use a proper JSON library for production
+        for key, value in str:gmatch('"([^"]+)"%s*:%s*"([^"]*)"') do
+            result[key] = value
         end
-        
-        -- Try to extract data - handle both string and object data
-        local data = str:match('"data"%s*:%s*"([^"]*)"')
-        if not data then
-            -- Try to extract data as object or array
-            local dataStart = str:find('"data"%s*:%s*')
-            if dataStart then
-                local afterColon = str:find(":", dataStart)
-                if afterColon then
-                    local remaining = str:sub(afterColon + 1)
-                    -- Simple extraction - find the value until next comma or end
-                    local dataValue = remaining:match('^%s*"([^"]*)"') or 
-                                    remaining:match('^%s*([^,}]*)')
-                    if dataValue then
-                        data = dataValue:trim()
-                    end
-                end
-            end
-        end
-        if data then
-            result.data = data
-        end
-        
-        -- Try to extract error
-        local error = str:match('"error"%s*:%s*"([^"]*)"')
-        if error then
-            result.error = error
-        end
-        
-        -- Try to extract timestamp
-        local timestamp = str:match('"timestamp"%s*:%s*([%d%.]+)')
-        if timestamp then
-            result.timestamp = tonumber(timestamp)
-        end
-        
         return result
     end
-    
-    return nil
-end
-
--- Alternative: use loadstring for JSON parsing (more robust but potentially unsafe)
-function json.decode_safe(str)
-    if not str or str == "" then
-        return nil
-    end
-    
-    -- Replace JSON syntax with Lua syntax
-    local luaStr = str:gsub('null', 'nil')
-                     :gsub('true', 'true')
-                     :gsub('false', 'false')
-                     :gsub('"([^"]*)":', '["%1"]=')
-    
-    -- Try to load as Lua code
-    local func, err = loadstring("return " .. luaStr)
-    if func then
-        local success, result = pcall(func)
-        if success then
-            return result
-        end
-    end
-    
     return nil
 end
 
@@ -100,7 +33,6 @@ networkManager = NetworkManager()
 local width = love.graphics.getWidth()
 local height = love.graphics.getHeight()
 
-local chat
 local createChatButton
 local sideBarWidth
 local font
@@ -114,7 +46,7 @@ local function updateFont()
 end
 
 function love.load()
-    print("Starting application...")
+
     networkManager:connect()
 
     love.window.setMode(800, 600, {
@@ -128,20 +60,18 @@ function love.load()
     sideBarWidth = math.min(desiredSideBarWidth, maxSideBarWidth)
 
     createChatButton = Button(10, 100, 200, 40, "New Chat", function()
-        print("New chat clicked")
+        print("Click")
         newChat = not newChat
         if newChat then
             chat.messages = {}
-            print("Chat messages cleared")
         end
     end)
 
-    chat = Chat(width, height, sideBarWidth)
+    local db = Database()
+    chat = Chat(width, height, sideBarWidth, db)
 
     font = love.graphics.newFont(24)
     love.graphics.setFont(font)
-    
-    print("Application loaded successfully")
 end
 
 function love.update(dt)
@@ -178,11 +108,6 @@ function love.draw()
     createChatButton:draw()
     chat:draw(newChat, height, width, sideBarWidth)
 
-    -- Debug info
-    love.graphics.setColor(1, 1, 1, 0.7)
-    love.graphics.print("Messages: " .. #chat.messages, 10, height - 40)
-    love.graphics.print("Connected: " .. (networkManager.isConnected and "YES" or "NO"), 10, height - 20)
-
     loveFrames.draw()
 end
 
@@ -218,7 +143,6 @@ function love.keypressed(key, unicode)
     if key == "return" and chat.queryInput.hasFocus then
         local message = chat.queryInput.text
         if message ~= "" then
-            print("Sending message:", message)
             chat:sendMessage(message)
             chat.queryInput.text = ""
             chat.queryInput.cursorPos = 0
@@ -230,11 +154,15 @@ function love.keyreleased(key)
     loveFrames.keyreleased(key)
 end
 
+function love.wheelmoved(x, y)
+    print("moving scroll")
+end
+
+
 function love.resize(w, h)
     updateFont()
 end
 
 function love.quit()
-    print("Closing application...")
     networkManager:close()
 end
