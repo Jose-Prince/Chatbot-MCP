@@ -1,9 +1,8 @@
--- components/chat.lua
 Chat = Object:extend()
 require "components.textInput"
 require "components.button"
 
-function Chat:new(width, height, sideBarWidth, db)
+function Chat:new(width, height, sideBarWidth, db, font)
     local inputWidth = 300
     local inputHeight = 30
 
@@ -11,27 +10,22 @@ function Chat:new(width, height, sideBarWidth, db)
     local y = height - inputHeight - 10
 
     self.queryInput = TextInput(x, y, inputWidth, inputHeight)
-    self.sendButton = Button()
 
     local buttonWidth = 80
     local buttonHeight = inputHeight
     local buttonX = x + inputWidth + 10
     local buttonY = y
     self.sendButton = Button(buttonX, buttonY, buttonWidth, buttonHeight, "Enviar", function()
-        local mensaje = self.queryInput.text
-        if mensaje ~= "" then
-            self:sendMessage(mensaje)
-            self.queryInput.text = ""
-            self.queryInput.cursorPos = 0
-        end
+        self:sendMessage(self.queryInput.text)
     end)
 
     self.db = db
+    self.newChat = true
+    self.font = font
 
-    -- Message history
     self.messages = {}
+    self.chatName = ""
     self.scrollOffset = 0
-    self.maxMessages = 100
 end
 
 function Chat:addMessage(sender, content)
@@ -54,54 +48,77 @@ function Chat:getVisibleMessageCount()
 end
 
 function Chat:drawMessages(width, height, sideBarWidth)
-    -- Área de mensajes
+    -- Messages Area
     local messageAreaX = sideBarWidth + 10
     local messageAreaY = height * 0.08 + 10
     local messageAreaWidth = width - sideBarWidth - 20
     local messageAreaHeight = height - height * 0.08 - 60
 
-    -- Fondo
+    -- Background
     love.graphics.setColor(0.2, 0.2, 0.3, 0.8)
     love.graphics.rectangle("fill", messageAreaX, messageAreaY, messageAreaWidth, messageAreaHeight)
-
     -- Activa recorte (scissor)
     love.graphics.setScissor(messageAreaX, messageAreaY, messageAreaWidth, messageAreaHeight)
 
-    -- Dibuja mensajes
     love.graphics.setColor(1, 1, 1, 1)
-    local y = messageAreaY + 10
-    local messageHeight = 25
 
-    local startIndex = math.max(1, self.scrollOffset + 1)
-    local endIndex = math.min(#self.messages, startIndex + self:getVisibleMessageCount() - 1)
+    if self.newChat then
+        local msg = "Start chatting with me"
+        local font = love.graphics.getFont()
+        local textWidth = font:getWidth(msg)
+        local textHeight = font:getHeight()
 
-    for i = startIndex, endIndex do
-        local message = self.messages[i]
-        local displayText = string.format("[%s]: %s", message.sender, message.content)
+        local centerX = messageAreaX + (messageAreaWidth - textWidth) / 2
+        local centerY = messageAreaY + (messageAreaHeight - textHeight) / 2
 
-        -- Color por tipo de mensaje
-        if message.sender == "You" then
-            love.graphics.setColor(0.7, 0.9, 1, 1)
-        elseif message.sender == "Assistant" then
-            love.graphics.setColor(0.9, 1, 0.7, 1)
-        elseif message.sender == "Error" then
-            love.graphics.setColor(1, 0.7, 0.7, 1)
-        else
-            love.graphics.setColor(1, 1, 1, 1)
-        end
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.print(msg, centerX, centerY)
+    else
+        -- Draw messages
+        local y = messageAreaY + 10
+        local messageHeight = 25
 
-        -- Word wrap
-        local wrappedText = self:wrapText(displayText, messageAreaWidth - 20)
-        for _, line in ipairs(wrappedText) do
-            love.graphics.print(line, messageAreaX + 10, y)
-            y = y + messageHeight
-            if y > messageAreaY + messageAreaHeight - messageHeight then
-                break
+        local startIndex = math.max(1, self.scrollOffset + 1)
+        local endIndex = math.min(#self.messages, startIndex + self:getVisibleMessageCount() - 1)
+
+        for i = startIndex, endIndex do
+            local message = self.messages[i]
+            local displayText = string.format("%s", message.content)
+
+            -- Color por tipo de mensaje
+            if message.sender == "You" then
+                love.graphics.setColor(0.7, 0.9, 1, 1)
+            elseif message.sender == "Assistant" then
+                love.graphics.setColor(0.9, 1, 0.7, 1)
+            elseif message.sender == "Error" then
+                love.graphics.setColor(1, 0.7, 0.7, 1)
+            else
+                love.graphics.setColor(1, 1, 1, 1)
+            end
+
+            -- Word wrap
+            local wrappedText = self:wrapText(displayText, messageAreaWidth - 20)
+            for _, line in ipairs(wrappedText) do
+                local lineWidth = self.font:getWidth(line)
+                local x
+
+                -- Allign text
+                if message.sender == "You" then
+                    x = messageAreaX + messageAreaWidth - lineWidth - 10
+                else
+                    x = messageAreaX + 10
+                end
+
+                love.graphics.print(line, x, y)
+                y = y + messageHeight
+
+                if y > messageAreaY + messageAreaHeight - messageHeight then
+                    break
+                end
             end
         end
     end
 
-    -- Desactiva scissor
     love.graphics.setScissor()
 end
 
@@ -138,18 +155,34 @@ end
 
 function Chat:sendMessage(message)
     if message and message:trim() ~= "" then
-        self:addMessage("You", message)
+
+        if self.newChat then
+            self.newChat = false
+
+            local totalChats = #self.db:GetAllKeys() + 1
+            self.chatName = "chat" .. totalChats
+            self.db:Create(self.chatName, {})
+        end
+
+        local msgObj = { sender = "You", content = message }
+        self:addMessage(msgObj.sender, msgObj.content)
+
+        local chatData = self.db:Read(self.chatName) or {}
+        table.insert(chatData, msgObj)
+        self.db:Update(self.chatName, chatData)
         networkManager:sendMessage(message)
+
+        self.queryInput.text = ""
+        self.queryInput.cursorPos = 0
     end
 end
 
-function Chat:draw(isNewChat, height, width, sideBarWidth)
+function Chat:draw(height, width, sideBarWidth)
     -- Background
     love.graphics.setColor(46/255, 41/255, 78/255)
     love.graphics.rectangle("fill", sideBarWidth, height * 0.08, width - sideBarWidth, height * 0.92)
 
-    -- Draw messages
-    --self:drawMessages(width, height, sideBarWidth)
+    self:drawMessages(width, height, sideBarWidth)
 
     -- Draw input area
     local inputWidth = self.queryInput.width
@@ -167,11 +200,10 @@ function Chat:draw(isNewChat, height, width, sideBarWidth)
     -- Connection status indicator
     local statusText = networkManager.isConnected and "Connected" or "Disconnected"
     local statusColor = networkManager.isConnected and {0, 1, 0, 1} or {1, 0, 0, 1}
-    
+
     love.graphics.setColor(statusColor)
     love.graphics.print(statusText, width - 100, 10)
-    
-    -- Show pending messages count if any
+
     if #networkManager.pendingMessages > 0 then
         love.graphics.setColor(1, 1, 0, 1) -- Yellow
         love.graphics.print("Pending: " .. #networkManager.pendingMessages, width - 100, 30)

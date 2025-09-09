@@ -1,59 +1,35 @@
+json = require("dkjson")
+
 Database = Object:extend()
 
 function Database:new()
-    self.env = lmdb.env_create()
-    if not self.env then
-        error("Failed to create LMDB environment")
-    end
-
-    os.execute("mkdir -p ./chats_db")
-
-    local ok = self.env:set_mapsize(10485760)
-    if not ok then
-        error("Failed to set mapsize")
-    end
-
-    local ok = self.env:open("./chats_db", 0, 0644)
-    if not ok then
-        error("Failed to open LMDB environment")
-    end
-
-    self.dbi = nil
+    self.db_file = "chats_db.json"
+    self.data = self:_load_data()
 end
 
-function Database:_begin_transaction(readonly)
-    local flags = readonly and lmdb.MDB_RDONLY or 0
-    local txn = self.env:txn_begin(nil, flags)
-    if not txn then
-        error("Failed to begin transaction")
+function Database:_load_data()
+    local info = love.filesystem.getInfo(self.db_file)
+    if info and info.type == "file" then
+        local content = love.filesystem.read(self.db_file)
+        if content and content ~= "" then
+            local data, _, err = json.decode(content)
+            if not err then
+                return data
+            end
+        end
     end
+    return {}
+end
 
-    local dbi = txn:dbi_open(nil, 0)
-    if not dbi then
-        txn:abort()
-        error("Failed to open database")
-    end
-
-    return txn, dbi
+function Database:_save_data()
+    local content = json.encode(self.data, { indent = true })
+    local success, error_msg = love.filesystem.write(self.db_file, content)
+    return success, error_msg
 end
 
 function Database:Create(key, value)
-    if not key or not value then
-        error("Key and value are required")
-    end
-
-    local txn, dbi = self:_begin_transaction(false)
-
-    local str_value = type(value) == "string" and value or tostring(value)
-
-    local success = txn:put(dbi, tostring(key), str_value, 0)
-    if success then
-        txn:commit()
-        return true
-    else
-        txn:abort()
-        return false, "Failed to store data"
-    end
+    self.data[key] = value
+    return self:_save_data()
 end
 
 function Database:Read(key)
@@ -61,16 +37,12 @@ function Database:Read(key)
         error("Key is required")
     end
 
-    local txn, dbi = self:_begin_transaction(true)
-
-    local value = txn:get(dbi, tostring(key))
-    txn:abort()
-
-    return value
+    return self.data[tostring(key)]
 end
 
 function Database:Update(key, value)
-    return self:Create(key, value)
+    self.data[key] = value
+    return self:_save_data()
 end
 
 function Database:Delete(key)
@@ -78,26 +50,33 @@ function Database:Delete(key)
         error("Key is required")
     end
 
-    local txn, dbi = self:_begin_transaction(false)
+    local key_str = tostring(key)
+    if self.data[key_str] then
+        self.data[key_str] = nil
+        local success, error_msg = self:_save_data()
 
-    local success = txn:del(dbi, tostring(key), nil)
-    if success then
-        txn:commit()
-        return true
+        if success then
+            return true
+        else
+            return false, error_msg or "Failed to save data"
+        end
     else
-        txn:abort()
-        return false, "Key not found or failed to delete"
+        return false, "Key not found"
     end
 end
 
 function Database:Exists(key)
-    local value = self:Read(key)
-    return value ~= nil
+    return self.data[tostring(key)] ~= nil
 end
 
 function Database:Close()
-    if self.env then
-        self.env:close()
-        self.env = nil
+    self:_save_data()
+end
+
+function Database:GetAllKeys()
+    local keys = {}
+    for key, _ in pairs(self.data) do
+        table.insert(keys, key)
     end
+    return keys
 end

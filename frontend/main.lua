@@ -1,11 +1,11 @@
 Object = require "classic"
 
-lmdb = require("lightningmdb")
 loveFrames = require("LoveFrames.loveframes")
 socket = require("socket")
 
 require "components.button"
 require "components.chat"
+require "components.sidebar"
 require "networkManager"
 require "database"
 
@@ -13,30 +13,14 @@ function string:trim()
     return self:match("^%s*(.-)%s*$")
 end
 
-json = {}
-function json.decode(str)
-    -- Very basic JSON parsing - you might want to use a proper JSON library
-    if str:match("^%s*{") then
-        -- Try to parse as JSON object
-        local result = {}
-        -- This is a simplified parser - use a proper JSON library for production
-        for key, value in str:gmatch('"([^"]+)"%s*:%s*"([^"]*)"') do
-            result[key] = value
-        end
-        return result
-    end
-    return nil
-end
-
 networkManager = NetworkManager()
 
 local width = love.graphics.getWidth()
 local height = love.graphics.getHeight()
 
-local createChatButton
 local sideBarWidth
 local font
-local newChat = true
+local sidebar
 
 local function updateFont()
     local h = love.graphics.getHeight()
@@ -59,18 +43,12 @@ function love.load()
     local maxSideBarWidth = 300
     sideBarWidth = math.min(desiredSideBarWidth, maxSideBarWidth)
 
-    createChatButton = Button(10, 100, 200, 40, "New Chat", function()
-        print("Click")
-        newChat = not newChat
-        if newChat then
-            chat.messages = {}
-        end
-    end)
+    font = love.graphics.newFont(24)
 
     local db = Database()
-    chat = Chat(width, height, sideBarWidth, db)
+    chat = Chat(width, height, sideBarWidth, db, font)
+    sidebar = Sidebar(chat, db)
 
-    font = love.graphics.newFont(24)
     love.graphics.setFont(font)
 end
 
@@ -79,6 +57,7 @@ function love.update(dt)
     networkManager:update(dt)
 
     chat.queryInput:update(dt)
+    sidebar.createChatButton:update(dt)
 
     width = love.graphics.getWidth()
     height = love.graphics.getHeight()
@@ -87,9 +66,9 @@ function love.update(dt)
     local maxSideBarWidth = 300
     sideBarWidth = math.min(desiredSideBarWidth, maxSideBarWidth)
 
-    createChatButton:SetSize(sideBarWidth - 20, 40)
-    createChatButton:SetPosition(10, height * 0.08 + 10)
-    createChatButton:update(dt)
+    sidebar.createChatButton:SetSize(sideBarWidth - 20, 40)
+    sidebar.createChatButton:SetPosition(10, height * 0.08 + 10)
+    sidebar.createChatButton:update(dt)
 end
 
 function love.draw()
@@ -97,16 +76,14 @@ function love.draw()
 
     love.graphics.setColor(18/255, 17/255, 51/255)
     love.graphics.rectangle("fill", 0, 0, width, height * 0.08)
-    love.graphics.rectangle("fill", 0, height * 0.08, sideBarWidth, height)
 
     love.graphics.setColor(197/255, 216/255, 109/255)
     love.graphics.setLineWidth(2)
     love.graphics.rectangle("line", 0, 0, width, height * 0.08)
-    love.graphics.rectangle("line", 0, height * 0.08, sideBarWidth, height - height*0.08)
     love.graphics.print("ChispitasGPT", 20, height * 0.021)
 
-    createChatButton:draw()
-    chat:draw(newChat, height, width, sideBarWidth)
+    sidebar:draw(width, height, sideBarWidth)
+    chat:draw(height, width, sideBarWidth)
 
     loveFrames.draw()
 end
@@ -116,9 +93,14 @@ function love.textinput(t)
 end
 
 function love.mousepressed(x, y, button)
-    local buttonHandled = createChatButton:mousepressed(x, y, button)
+    local handled = sidebar.createChatButton:mousepressed(x, y, button)
+    for _, btn in ipairs(sidebar.chatButtons) do
+        if btn:mousepressed(x, y, button) then
+            handled = true
+        end
+    end
 
-    if not buttonHandled then
+    if not handled then
         loveFrames.mousepressed(x, y, button)
     end
 
@@ -127,13 +109,13 @@ function love.mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
-    local buttonHandled = createChatButton:mousereleased(x, y, button)
+    sidebar.createChatButton:mousereleased(x, y, button)
+    for _, btn in ipairs(sidebar.chatButtons) do
+        btn:mousereleased(x, y, button)
+    end
 
     chat.sendButton:mousereleased(x, y, button)
-
-    if not buttonHandled then
-        loveFrames.mousereleased(x, y, button)
-    end
+    loveFrames.mousereleased(x, y, button)
 end
 
 function love.keypressed(key, unicode)
@@ -141,14 +123,10 @@ function love.keypressed(key, unicode)
     chat.queryInput:keypressed(key)
 
     if key == "return" and chat.queryInput.hasFocus then
-        local message = chat.queryInput.text
-        if message ~= "" then
-            chat:sendMessage(message)
-            chat.queryInput.text = ""
-            chat.queryInput.cursorPos = 0
-        end
+        chat.sendButton:onClick()
     end
 end
+
 
 function love.keyreleased(key)
     loveFrames.keyreleased(key)
