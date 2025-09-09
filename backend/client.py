@@ -21,18 +21,38 @@ class MCPClient:
         self.tcp_server = None
         self.running = True
 
+    async def start_tcp_server(self):
+        """Start TCP server to receive external messages"""
+        self.tcp_server = await asyncio.start_server(
+            self.handle_tcp_client,
+            'localhost',
+            self.tcp_port
+        )
+        print(f"TCP server started on port {self.tcp_port}")
+
     async def connect_to_server(self, server_script_path: str):
+        parts = server_script_path.split()
+
         if server_script_path.endswith('.py'):
             command = "python"
             args = [server_script_path]
-        elif server_script_path.endswith('.js'):
-            command = "node"
-            args = [server_script_path]
+        elif server_script_path.endswith('.ts'):
+            command = "npx"
+            args = ["ts-node", server_script_path]
+        elif server_script_path.startswith('npx'):
+            command = parts[0]  # "npx"
+            args = parts[1:]    # ["@modelcontextprotocol/server-filesystem", "./", ...]
+        elif len(parts) > 1:
+            # Handle commands with arguments like "mcp-server-filesystem ./"
+            command = parts[0]  # "mcp-server-filesystem"
+            args = parts[1:]    # ["./"]
         else:
-            command = server_script_path
+            # Single command without arguments (like "mcp-server-git")
+            command = parts[0]
             args = []
-
-        if args == []:
+    
+        # Special case: if command is specifically "mcp-server-git" with no args, use your git setup
+        if command == "mcp-server-git" and len(args) == 0:
             server_params = StdioServerParameters(
                 command="mcp-server-git",
                 args=[],
@@ -40,12 +60,13 @@ class MCPClient:
                 cwd="/home/akice/Documentos/Repositories/Chatbot-MCP"
             )
         else:
+            # General case for all other servers including filesystem
             server_params = StdioServerParameters(
                 command=command,
                 args=args,
                 env=None
             )
-
+    
         stdio_transport = await self.exit_stack.enter_async_context(
             stdio_client(server_params)
         )
@@ -59,15 +80,6 @@ class MCPClient:
         response = await self.session.list_tools()
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])
-
-    async def start_tcp_server(self):
-        """Start TCP server to receive external messages"""
-        self.tcp_server = await asyncio.start_server(
-            self.handle_tcp_client,
-            'localhost',
-            self.tcp_port
-        )
-        print(f"TCP server started on port {self.tcp_port}")
 
     async def handle_tcp_client(self, reader, writer):
         client_addr = writer.get_extra_info('peername')
