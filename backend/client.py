@@ -22,17 +22,29 @@ class MCPClient:
         self.running = True
 
     async def connect_to_server(self, server_script_path: str):
-        is_python = server_script_path.endswith('.py')
-        is_js = server_script_path.endswith('.js')
-        if not (is_python or is_js):
-            raise ValueError("Server script must be a .py or .js file")
+        if server_script_path.endswith('.py'):
+            command = "python"
+            args = [server_script_path]
+        elif server_script_path.endswith('.js'):
+            command = "node"
+            args = [server_script_path]
+        else:
+            command = server_script_path
+            args = []
 
-        command = "python" if is_python else "node"
-        server_params = StdioServerParameters(
-            command=command,
-            args=[server_script_path],
-            env=None
-        )
+        if args == []:
+            server_params = StdioServerParameters(
+                command="mcp-server-git",
+                args=[],
+                env=None,
+                cwd="/home/akice/Documentos/Repositories/Chatbot-MCP"
+            )
+        else:
+            server_params = StdioServerParameters(
+                command=command,
+                args=args,
+                env=None
+            )
 
         stdio_transport = await self.exit_stack.enter_async_context(
             stdio_client(server_params)
@@ -313,10 +325,11 @@ async def main():
         print("Usage: python client.py <server_script> [tcp_port]")
         sys.exit(1)
 
+    server_command = sys.argv[1]
     tcp_port = int(sys.argv[2]) if len(sys.argv) > 2 else 8080
     client = MCPClient(tcp_port=tcp_port)
     try:
-        await client.connect_to_server(sys.argv[1])
+        await client.connect_to_server(server_command)
         await client.run_with_tcp()
     finally:
         await client.cleanup()
