@@ -121,12 +121,7 @@ end
 function love.keypressed(key, unicode)
     loveFrames.keypressed(key, unicode)
     chat.queryInput:keypressed(key)
-
-    if key == "return" and chat.queryInput.hasFocus then
-        chat.sendButton:onClick()
-    end
 end
-
 
 function love.keyreleased(key)
     loveFrames.keyreleased(key)

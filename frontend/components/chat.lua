@@ -26,25 +26,39 @@ function Chat:new(width, height, sideBarWidth, db, font)
     self.messages = {}
     self.chatName = ""
     self.scrollOffset = 0
+
+    self.bubbleColors = {
+        You = {197/255, 216/255, 109/255, 1}, 
+        Assistant = {18/255, 17/255, 51/255, 1}, 
+    }
+
+    self.textColors = {
+        You = {18/255, 17/255, 51/255, 1},
+        Assistant = {197/255, 216/255, 109/255, 1}, 
+    }
+
+    self.bubblePadding = 12
+    self.bubbleMargin = 8
+    self.maxBubbleWidth = 0.7
 end
 
 function Chat:addMessage(sender, content)
     table.insert(self.messages, {sender = sender, content = content})
 
-    -- Auto-scroll al último mensaje
-    local visibleCount = self:getVisibleMessageCount()
-    if #self.messages > visibleCount then
-        self.scrollOffset = #self.messages - visibleCount
-    else
-        self.scrollOffset = 0
-    end
+    -- Auto-scroll to latest message (for bottom-up: scrollOffset = 0)
+    self:scrollToBottom()
+end
+
+function Chat:scrollToBottom()
+    -- For bottom-up display, scrollOffset = 0 means showing newest messages
+    self.scrollOffset = 0
 end
 
 function Chat:getVisibleMessageCount()
     local height = love.graphics.getHeight()
-    local messageAreaHeight = height - height * 0.08 - 60
-    local messageHeight = 25
-    return math.floor(messageAreaHeight / messageHeight)
+    local messageAreaHeight = height - height * 0.08 - 70
+    local averageMessageHeight = 60 -- Estimated average message height with bubbles
+    return math.floor(messageAreaHeight / averageMessageHeight)
 end
 
 function Chat:drawMessages(width, height, sideBarWidth)
@@ -52,15 +66,12 @@ function Chat:drawMessages(width, height, sideBarWidth)
     local messageAreaX = sideBarWidth + 10
     local messageAreaY = height * 0.08 + 10
     local messageAreaWidth = width - sideBarWidth - 20
-    local messageAreaHeight = height - height * 0.08 - 60
+    local messageAreaHeight = height - height * 0.08 - 70
 
-    -- Background
-    love.graphics.setColor(0.2, 0.2, 0.3, 0.8)
+    love.graphics.setColor(0.2, 0.2, 0.3, 0.8)  
     love.graphics.rectangle("fill", messageAreaX, messageAreaY, messageAreaWidth, messageAreaHeight)
-    -- Activa recorte (scissor)
-    love.graphics.setScissor(messageAreaX, messageAreaY, messageAreaWidth, messageAreaHeight)
 
-    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setScissor(messageAreaX, messageAreaY, messageAreaWidth, messageAreaHeight)
 
     if self.newChat then
         local msg = "Start chatting with me"
@@ -71,55 +82,179 @@ function Chat:drawMessages(width, height, sideBarWidth)
         local centerX = messageAreaX + (messageAreaWidth - textWidth) / 2
         local centerY = messageAreaY + (messageAreaHeight - textHeight) / 2
 
-        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.setColor(0.6, 0.6, 0.6, 1)
         love.graphics.print(msg, centerX, centerY)
     else
-        -- Draw messages
-        local y = messageAreaY + 10
-        local messageHeight = 25
+        local maxBubbleWidth = messageAreaWidth * self.maxBubbleWidth
 
-        local startIndex = math.max(1, self.scrollOffset + 1)
-        local endIndex = math.min(#self.messages, startIndex + self:getVisibleMessageCount() - 1)
+        local currentY = messageAreaY + messageAreaHeight - 10
 
-        for i = startIndex, endIndex do
+        local totalMessages = #self.messages
+        local startIndex = math.max(1, totalMessages - self.scrollOffset - self:getVisibleMessageCount() + 1)
+        local endIndex = totalMessages - self.scrollOffset
+
+        local messagesToDraw = {}
+        local totalHeight = 0
+
+        for i = endIndex, startIndex, -1 do
             local message = self.messages[i]
-            local displayText = string.format("%s", message.content)
+            local wrappedText = self:wrapText(message.content, maxBubbleWidth - self.bubblePadding * 2)
+            local textHeight = #wrappedText * self.font:getHeight()
+            local bubbleHeight = textHeight + self.bubblePadding * 2
 
-            -- Color por tipo de mensaje
-            if message.sender == "You" then
-                love.graphics.setColor(0.7, 0.9, 1, 1)
-            elseif message.sender == "Assistant" then
-                love.graphics.setColor(0.9, 1, 0.7, 1)
-            elseif message.sender == "Error" then
-                love.graphics.setColor(1, 0.7, 0.7, 1)
-            else
-                love.graphics.setColor(1, 1, 1, 1)
+            table.insert(messagesToDraw, 1, {
+                message = message,
+                height = bubbleHeight,
+                wrappedText = wrappedText
+            })
+
+            totalHeight = totalHeight + bubbleHeight + self.bubbleMargin
+        end
+
+        currentY = messageAreaY + messageAreaHeight - 10
+
+        for i = #messagesToDraw, 1, -1 do
+            local msgData = messagesToDraw[i]
+            currentY = currentY - msgData.height - self.bubbleMargin
+
+            if currentY < messageAreaY then
+                break
             end
 
-            -- Word wrap
-            local wrappedText = self:wrapText(displayText, messageAreaWidth - 20)
-            for _, line in ipairs(wrappedText) do
-                local lineWidth = self.font:getWidth(line)
-                local x
-
-                -- Allign text
-                if message.sender == "You" then
-                    x = messageAreaX + messageAreaWidth - lineWidth - 10
-                else
-                    x = messageAreaX + 10
-                end
-
-                love.graphics.print(line, x, y)
-                y = y + messageHeight
-
-                if y > messageAreaY + messageAreaHeight - messageHeight then
-                    break
-                end
-            end
+            self:drawMessageBubbleAtPosition(msgData.message, messageAreaX, currentY, messageAreaWidth, maxBubbleWidth, msgData.wrappedText, msgData.height)
         end
     end
 
     love.graphics.setScissor()
+end
+
+function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, maxBubbleWidth, wrappedText, bubbleHeight)
+    local isFromUser = message.sender == "You"
+    local bubbleColor = self.bubbleColors[message.sender] or {0.3, 0.3, 0.3, 1}
+    local textColor = self.textColors[message.sender] or {1, 1, 1, 1}
+    
+    -- Find the widest line to determine bubble width
+    local maxLineWidth = 0
+    for _, line in ipairs(wrappedText) do
+        local lineWidth = self.font:getWidth(line)
+        if lineWidth > maxLineWidth then
+            maxLineWidth = lineWidth
+        end
+    end
+    
+    local bubbleWidth = math.min(maxLineWidth + self.bubblePadding * 2, maxBubbleWidth)
+    
+    -- Position bubble (right for user, left for others)
+    local bubbleX
+    if isFromUser then
+        bubbleX = areaX + areaWidth - bubbleWidth - self.bubbleMargin
+    else
+        bubbleX = areaX + self.bubbleMargin
+    end
+
+    -- Draw bubble
+    love.graphics.setColor(bubbleColor)
+    love.graphics.rectangle("fill", bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8, 8)
+
+    -- Draw text
+    love.graphics.setColor(textColor)
+    local textY = bubbleY + self.bubblePadding
+    for _, line in ipairs(wrappedText) do
+        local textX
+        if isFromUser then
+            -- Right align text for user
+            local lineWidth = self.font:getWidth(line)
+            textX = bubbleX + bubbleWidth - lineWidth - self.bubblePadding
+        else
+            -- Left align text for others
+            textX = bubbleX + self.bubblePadding
+        end
+
+        love.graphics.print(line, textX, textY)
+        textY = textY + self.font:getHeight()
+    end
+
+    love.graphics.setFont(self.font)
+end
+
+function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidth)
+    local isFromUser = message.sender == "You"
+    local bubbleColor = self.bubbleColors[message.sender] or {0.3, 0.3, 0.3, 1}
+    local textColor = self.textColors[message.sender] or {1, 1, 1, 1}
+    
+    -- Wrap text to fit bubble width
+    local wrappedText = self:wrapText(message.content, maxBubbleWidth - self.bubblePadding * 2)
+    
+    -- Calculate bubble dimensions
+    local textHeight = #wrappedText * self.font:getHeight()
+    local bubbleHeight = textHeight + self.bubblePadding * 2
+    
+    -- Find the widest line to determine bubble width
+    local maxLineWidth = 0
+    for _, line in ipairs(wrappedText) do
+        local lineWidth = self.font:getWidth(line)
+        if lineWidth > maxLineWidth then
+            maxLineWidth = lineWidth
+        end
+    end
+    
+    local bubbleWidth = math.min(maxLineWidth + self.bubblePadding * 2, maxBubbleWidth)
+
+    -- Position bubble (right for user, left for others)
+    local bubbleX
+    if isFromUser then
+        bubbleX = areaX + areaWidth - bubbleWidth - self.bubbleMargin
+    else
+        bubbleX = areaX + self.bubbleMargin
+    end
+
+    local bubbleY = startY
+
+    -- Draw bubble
+    love.graphics.setColor(bubbleColor)
+    love.graphics.rectangle("fill", bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8, 8)
+    
+    -- Draw bubble tail (WhatsApp-style pointer)
+    if isFromUser then
+        -- Right tail for user messages
+        local tailPoints = {
+            bubbleX + bubbleWidth, bubbleY + bubbleHeight - 10,
+            bubbleX + bubbleWidth + 8, bubbleY + bubbleHeight - 5,
+            bubbleX + bubbleWidth, bubbleY + bubbleHeight - 2
+        }
+        love.graphics.polygon("fill", tailPoints)
+    else
+        -- Left tail for other messages
+        local tailPoints = {
+            bubbleX, bubbleY + bubbleHeight - 10,
+            bubbleX - 8, bubbleY + bubbleHeight - 5,
+            bubbleX, bubbleY + bubbleHeight - 2
+        }
+        love.graphics.polygon("fill", tailPoints)
+    end
+    
+    -- Draw text
+    love.graphics.setColor(textColor)
+    local textY = bubbleY + self.bubblePadding
+    for _, line in ipairs(wrappedText) do
+        local textX
+        if isFromUser then
+            -- Right align text in user bubbles
+            local lineWidth = self.font:getWidth(line)
+            textX = bubbleX + bubbleWidth - lineWidth - self.bubblePadding
+        else
+            -- Left align text in other bubbles
+            textX = bubbleX + self.bubblePadding
+        end
+        
+        love.graphics.print(line, textX, textY)
+        textY = textY + self.font:getHeight()
+    end
+
+    love.graphics.setFont(self.font)
+
+    -- Return next Y position
+    return startY + bubbleHeight + self.bubbleMargin
 end
 
 function Chat:wrapText(text, maxWidth)
@@ -155,21 +290,16 @@ end
 
 function Chat:sendMessage(message)
     if message and message:trim() ~= "" then
-
         if self.newChat then
             self.newChat = false
 
             local totalChats = #self.db:GetAllKeys() + 1
             self.chatName = "chat" .. totalChats
-            self.db:Create(self.chatName, {})
+            self.db:Create(self.chatName, "")
+            self.messages = {}
         end
 
-        local msgObj = { sender = "You", content = message }
-        self:addMessage(msgObj.sender, msgObj.content)
-
-        local chatData = self.db:Read(self.chatName) or {}
-        table.insert(chatData, msgObj)
-        self.db:Update(self.chatName, chatData)
+        self:addMessage("You", message)
         networkManager:sendMessage(message)
 
         self.queryInput.text = ""
@@ -188,7 +318,7 @@ function Chat:draw(height, width, sideBarWidth)
     local inputWidth = self.queryInput.width
     local inputHeight = self.queryInput.height
     self.queryInput.x = sideBarWidth + (width - sideBarWidth - inputWidth) / 2
-    self.queryInput.y = height - inputHeight - 10
+    self.queryInput.y = height - inputHeight - 15
     self.queryInput:draw()
 
     local buttonX = self.queryInput.x + inputWidth + 10
@@ -213,7 +343,7 @@ end
 function Chat:scroll(amount)
     local visibleCount = self:getVisibleMessageCount()
     local maxOffset = math.max(0, #self.messages - visibleCount)
-
+    
+    -- For bottom-up display: 0 = newest messages, higher = older messages
     self.scrollOffset = math.min(math.max(self.scrollOffset + amount, 0), maxOffset)
 end
-
