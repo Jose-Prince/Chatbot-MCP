@@ -39,25 +39,36 @@ function Chat:new(width, height, sideBarWidth, db, font)
 
     self.bubblePadding = 12
     self.bubbleMargin = 8
-    self.maxBubbleWidth = 0.7
+    self.maxBubbleWidth = 0.8
 end
 
 function Chat:addMessage(sender, content)
     table.insert(self.messages, {sender = sender, content = content})
 
-    -- Auto-scroll to latest message (for bottom-up: scrollOffset = 0)
+    if not self.newChat and self.chatName and self.chatName ~= "" then
+        self:saveMessagesToDatabase()
+    end
+
     self:scrollToBottom()
 end
 
+function Chat:saveMessagesToDatabase()
+    if self.chatName and self.chatName ~= "" then
+        local success, error_msg = self.db:Update(self.chatName, self.messages)
+        if not success then
+            print("Error saving messages to database:", error_msg)
+        end
+    end
+end
+
 function Chat:scrollToBottom()
-    -- For bottom-up display, scrollOffset = 0 means showing newest messages
     self.scrollOffset = 0
 end
 
 function Chat:getVisibleMessageCount()
     local height = love.graphics.getHeight()
     local messageAreaHeight = height - height * 0.08 - 70
-    local averageMessageHeight = 60 -- Estimated average message height with bubbles
+    local averageMessageHeight = 60
     return math.floor(messageAreaHeight / averageMessageHeight)
 end
 
@@ -132,7 +143,7 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
     local isFromUser = message.sender == "You"
     local bubbleColor = self.bubbleColors[message.sender] or {0.3, 0.3, 0.3, 1}
     local textColor = self.textColors[message.sender] or {1, 1, 1, 1}
-    
+
     -- Find the widest line to determine bubble width
     local maxLineWidth = 0
     for _, line in ipairs(wrappedText) do
@@ -141,9 +152,9 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
             maxLineWidth = lineWidth
         end
     end
-    
+
     local bubbleWidth = math.min(maxLineWidth + self.bubblePadding * 2, maxBubbleWidth)
-    
+
     -- Position bubble (right for user, left for others)
     local bubbleX
     if isFromUser then
