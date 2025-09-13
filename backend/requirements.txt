@@ -1,9 +1,9 @@
 mcp
 anthropic
 python-dotenv
-websockets
 pandas
 scikit-learn
 requests
 steamspypi
 mcp-server-git
+fastmcp

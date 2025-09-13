@@ -1,31 +1,47 @@
 import asyncio
 import sys
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from contextlib import AsyncExitStack
 
+# Local server imports
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+# Remote server imports
+from fastmcp import Client as FastMCPClient
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
 load_dotenv()
 
-class MCPClient:
+class UnifiedMCPClient:
     def __init__(self, tcp_port: int = 8080):
+        # Local server attributes
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
+        self.stdio = None
+        self.write = None
+        
+        # Remote server attributes
+        self.server_url: Optional[str] = None
+        
+        # Common attributes
         self.anthropic = Anthropic()
         self.tcp_port = tcp_port
         self.tcp_server = None
         self.running = True
+        self.connection_type: Optional[str] = None  # 'local' or 'remote'
         
         # Conversation context storage
         self.conversation_history: Dict[str, List[Dict[str, Any]]] = {}
         self.max_history_length = 10
 
-    async def connect_to_server(self, server_script_path: str):
+    async def connect_to_local_server(self, server_script_path: str):
+        """Connect to local MCP server via stdio"""
+        self.connection_type = 'local'
+        
         parts = server_script_path.split()
 
         if server_script_path.endswith('.py'):
@@ -70,7 +86,44 @@ class MCPClient:
 
         response = await self.session.list_tools()
         tools = response.tools
-        print("\nConnected to server with tools:", [tool.name for tool in tools])
+        print(f"\nConnected to LOCAL server with tools: {[tool.name for tool in tools]}")
+
+    async def connect_to_remote_server(self, server_url: str):
+        """Connect to remote MCP server via HTTP"""
+        self.connection_type = 'remote'
+        self.server_url = server_url
+        
+        # Test the connection
+        try:
+            async with FastMCPClient(server_url) as client:
+                tools = await client.list_tools()
+                print(f"\nConnected to REMOTE server with tools: {[tool.name for tool in tools]}")
+        except Exception as e:
+            print(f"Failed to connect to remote server: {e}")
+            raise
+
+    async def get_tools(self):
+        """Get available tools from the connected server"""
+        if self.connection_type == 'local':
+            response = await self.session.list_tools()
+            return response.tools
+        elif self.connection_type == 'remote':
+            async with FastMCPClient(self.server_url) as client:
+                tools = await client.list_tools()
+                return tools
+        else:
+            raise RuntimeError("No server connected")
+
+    async def call_tool(self, tool_name: str, tool_input: dict):
+        """Call a tool on the connected server"""
+        if self.connection_type == 'local':
+            return await self.session.call_tool(tool_name, tool_input)
+        elif self.connection_type == 'remote':
+            async with FastMCPClient(self.server_url) as client:
+                result = await client.call_tool(tool_name, tool_input)
+                return result
+        else:
+            raise RuntimeError("No server connected")
 
     async def start_tcp_server(self):
         """Start TCP server to receive external messages"""
@@ -187,7 +240,7 @@ class MCPClient:
             return f"Error processing TCP message: {str(e)}"
 
     async def process_query(self, query: str, conversation_id: str = "console") -> str:
-        print(f"Processing query: {query}")
+        print(f"Processing query: {query} (Connection: {self.connection_type})")
         
         try:
             messages = self.get_conversation_history(conversation_id).copy()
@@ -196,10 +249,15 @@ class MCPClient:
             messages.append(user_message)
             self.add_to_conversation_history(conversation_id, "user", query)
 
-            response = await self.session.list_tools()
+            # Get available tools from the connected server
+            tools_raw = await self.get_tools()
             available_tools = [
-                {"name": tool.name, "description": tool.description, "input_schema": tool.inputSchema}
-                for tool in response.tools
+                {
+                    "name": tool.name, 
+                    "description": tool.description, 
+                    "input_schema": tool.inputSchema
+                }
+                for tool in tools_raw
             ]
 
             print(f"Available tools: {[tool['name'] for tool in available_tools]}")
@@ -242,18 +300,30 @@ class MCPClient:
                 
                 for tool_call in tool_calls:
                     try:
-                        print(f"Calling tool: {tool_call.name}")
-                        tool_result = await self.session.call_tool(tool_call.name, tool_call.input)
+                        print(f"Calling {self.connection_type} tool: {tool_call.name}")
+                        tool_result = await self.call_tool(tool_call.name, tool_call.input)
                         
-                        if hasattr(tool_result, 'content'):
-                            if isinstance(tool_result.content, list):
-                                content_text = "".join([
-                                    getattr(item, 'text', str(item)) for item in tool_result.content
-                                ])
+                        # Handle results from both local and remote servers
+                        if self.connection_type == 'local':
+                            # Local server result handling
+                            if hasattr(tool_result, 'content'):
+                                if isinstance(tool_result.content, list):
+                                    content_text = "".join([
+                                        getattr(item, 'text', str(item)) for item in tool_result.content
+                                    ])
+                                else:
+                                    content_text = str(tool_result.content)
                             else:
-                                content_text = str(tool_result.content)
+                                content_text = str(tool_result)
                         else:
-                            content_text = str(tool_result)
+                            # Remote server result handling
+                            if isinstance(tool_result, list) and len(tool_result) > 0:
+                                if hasattr(tool_result[0], 'text'):
+                                    content_text = tool_result[0].text
+                                else:
+                                    content_text = str(tool_result[0])
+                            else:
+                                content_text = str(tool_result)
                         
                         print(f"Tool result: {content_text}")
                         tool_results.append({
@@ -309,7 +379,7 @@ class MCPClient:
 
     async def chat_loop(self):
         conversation_id = "console"
-        print("\nMCP Client Started!")
+        print(f"\nUnified MCP Client Started! (Connection: {self.connection_type})")
         print("Type your queries, 'clear' to clear conversation history, or 'quit' to exit.")
         print(f"TCP server also listening on port {self.tcp_port}")
 
@@ -357,23 +427,44 @@ class MCPClient:
         if self.tcp_server:
             self.tcp_server.close()
             await self.tcp_server.wait_closed()
-        await self.exit_stack.aclose()
+        if self.connection_type == 'local':
+            await self.exit_stack.aclose()
 
 async def async_input(prompt: str = "") -> str:
     print(prompt, end="", flush=True)
     loop = asyncio.get_event_loop()
     return (await loop.run_in_executor(None, sys.stdin.readline)).rstrip()
 
+def detect_connection_type(server_arg: str) -> str:
+    """Detect if the server argument is a URL (remote) or script path (local)"""
+    if server_arg.startswith(('http://', 'https://')):
+        return 'remote'
+    else:
+        return 'local'
+
 async def main():
     if len(sys.argv) < 2:
-        print("Usage: python client.py <server_script> [tcp_port]")
+        print("Usage: python unified_client.py <server_script_or_url> [tcp_port]")
+        print("\nExamples:")
+        print("  Local:  python unified_client.py mcp-server-git 8080")
+        print("  Local:  python unified_client.py server.py 8080")
+        print("  Remote: python unified_client.py http://localhost:8080/mcp 8080")
         sys.exit(1)
 
-    server_command = sys.argv[1]
+    server_arg = sys.argv[1]
     tcp_port = int(sys.argv[2]) if len(sys.argv) > 2 else 8080
-    client = MCPClient(tcp_port=tcp_port)
+    
+    connection_type = detect_connection_type(server_arg)
+    client = UnifiedMCPClient(tcp_port=tcp_port)
+    
     try:
-        await client.connect_to_server(server_command)
+        if connection_type == 'local':
+            print(f"Connecting to LOCAL server: {server_arg}")
+            await client.connect_to_local_server(server_arg)
+        else:
+            print(f"Connecting to REMOTE server: {server_arg}")
+            await client.connect_to_remote_server(server_arg)
+            
         await client.run_with_tcp()
     finally:
         await client.cleanup()

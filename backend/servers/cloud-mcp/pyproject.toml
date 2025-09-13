@@ -1,0 +1,8 @@
+[project]
+name = "cloud-mcp"
+version = "0.1.0"
+description = "Deployment of remote mcp"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp==2.6.1",
+]
