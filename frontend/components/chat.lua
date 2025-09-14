@@ -9,15 +9,7 @@ function Chat:new(width, height, sideBarWidth, db, font)
     local x = sideBarWidth + (width - sideBarWidth - inputWidth) / 2
     local y = height - inputHeight - 10
 
-    self.queryInput = TextInput(x, y, inputWidth, inputHeight)
-
-    local buttonWidth = 80
-    local buttonHeight = inputHeight
-    local buttonX = x + inputWidth + 10
-    local buttonY = y
-    self.sendButton = Button(buttonX, buttonY, buttonWidth, buttonHeight, "Enviar", function()
-        self:sendMessage(self.queryInput.text)
-    end)
+    self.queryInput = TextInput(x, y, width * 0.65, height * 0.07)
 
     self.db = db
     self.newChat = true
@@ -328,32 +320,15 @@ function Chat:draw(height, width, sideBarWidth)
     local inputWidth = self.queryInput.width
     local inputHeight = self.queryInput.height
     self.queryInput.x = sideBarWidth + (width - sideBarWidth - inputWidth) / 2
-    self.queryInput.y = height - inputHeight - 15
+    self.queryInput.y = height - inputHeight - 10
+    self.queryInput.width = width * 0.65
     self.queryInput:draw()
-
-    local buttonX = self.queryInput.x + inputWidth + 10
-    local buttonY = self.queryInput.y
-    self.sendButton:SetPosition(buttonX, buttonY)
-    self.sendButton:SetSize(80, inputHeight)
-    self.sendButton:draw()
-
-    -- Connection status indicator
-    local statusText = networkManager.isConnected and "Connected" or "Disconnected"
-    local statusColor = networkManager.isConnected and {0, 1, 0, 1} or {1, 0, 0, 1}
-
-    love.graphics.setColor(statusColor)
-    love.graphics.print(statusText, width - 100, 10)
-
-    if #networkManager.pendingMessages > 0 then
-        love.graphics.setColor(1, 1, 0, 1) -- Yellow
-        love.graphics.print("Pending: " .. #networkManager.pendingMessages, width - 100, 30)
-    end
 end
 
 function Chat:scroll(amount)
     local visibleCount = self:getVisibleMessageCount()
     local maxOffset = math.max(0, #self.messages - visibleCount)
-    
+
     -- For bottom-up display: 0 = newest messages, higher = older messages
     self.scrollOffset = math.min(math.max(self.scrollOffset + amount, 0), maxOffset)
 end

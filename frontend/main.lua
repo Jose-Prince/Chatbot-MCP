@@ -105,7 +105,6 @@ function love.mousepressed(x, y, button)
     end
 
     chat.queryInput:mousepressed(x, y, button)
-    chat.sendButton:mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
@@ -114,13 +113,22 @@ function love.mousereleased(x, y, button)
         btn:mousereleased(x, y, button)
     end
 
-    chat.sendButton:mousereleased(x, y, button)
     loveFrames.mousereleased(x, y, button)
 end
 
 function love.keypressed(key, unicode)
     loveFrames.keypressed(key, unicode)
     chat.queryInput:keypressed(key)
+ 
+    if key == "return" and chat.queryInput.hasFocus then
+        local message = chat.queryInput.text
+        if message ~= "" then
+            print("Sending message:", message)
+            chat:sendMessage(message)
+            chat.queryInput.text = ""
+            chat.queryInput.cursorPos = 0
+        end
+    end
 end
 
 function love.keyreleased(key)
