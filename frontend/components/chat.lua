@@ -86,14 +86,14 @@ function Chat:drawMessages(width, height, sideBarWidth)
 
     if self.newChat then
         local msg = "Start chatting with me"
-        local font = love.graphics.getFont()
-        local textWidth = font:getWidth(msg)
-        local textHeight = font:getHeight()
+        local textWidth = self.font:getWidth(msg)
+        local textHeight = self.font:getHeight()
 
         local centerX = messageAreaX + (messageAreaWidth - textWidth) / 2
         local centerY = messageAreaY + (messageAreaHeight - textHeight) / 2
 
         love.graphics.setColor(0.6, 0.6, 0.6, 1)
+        love.graphics.setFont(self.font)
         love.graphics.print(msg, centerX, centerY)
     else
         local maxBubbleWidth = messageAreaWidth * self.maxBubbleWidth
@@ -181,25 +181,25 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
             textX = bubbleX + self.bubblePadding
         end
 
+        love.graphics.setFont(self.font)
         love.graphics.print(line, textX, textY)
         textY = textY + self.font:getHeight()
     end
 
-    love.graphics.setFont(self.font)
 end
 
 function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidth)
     local isFromUser = message.sender == "You"
     local bubbleColor = self.bubbleColors[message.sender] or {0.3, 0.3, 0.3, 1}
     local textColor = self.textColors[message.sender] or {1, 1, 1, 1}
-    
+
     -- Wrap text to fit bubble width
     local wrappedText = self:wrapText(message.content, maxBubbleWidth - self.bubblePadding * 2)
-    
+
     -- Calculate bubble dimensions
     local textHeight = #wrappedText * self.font:getHeight()
     local bubbleHeight = textHeight + self.bubblePadding * 2
-    
+
     -- Find the widest line to determine bubble width
     local maxLineWidth = 0
     for _, line in ipairs(wrappedText) do
@@ -208,7 +208,7 @@ function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidt
             maxLineWidth = lineWidth
         end
     end
-    
+
     local bubbleWidth = math.min(maxLineWidth + self.bubblePadding * 2, maxBubbleWidth)
 
     -- Position bubble (right for user, left for others)
@@ -257,30 +257,29 @@ function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidt
             -- Left align text in other bubbles
             textX = bubbleX + self.bubblePadding
         end
-        
+
+        love.graphics.setFont(self.font)
         love.graphics.print(line, textX, textY)
         textY = textY + self.font:getHeight()
     end
 
-    love.graphics.setFont(self.font)
 
     -- Return next Y position
     return startY + bubbleHeight + self.bubbleMargin
 end
 
 function Chat:wrapText(text, maxWidth)
-    local font = love.graphics.getFont()
     local words = {}
     for word in text:gmatch("%S+") do
         table.insert(words, word)
     end
-    
+
     local lines = {}
     local currentLine = ""
-    
+
     for _, word in ipairs(words) do
         local testLine = currentLine == "" and word or currentLine .. " " .. word
-        if font:getWidth(testLine) > maxWidth then
+        if self.font:getWidth(testLine) > maxWidth then
             if currentLine ~= "" then
                 table.insert(lines, currentLine)
                 currentLine = word
@@ -291,11 +290,11 @@ function Chat:wrapText(text, maxWidth)
             currentLine = testLine
         end
     end
-    
+
     if currentLine ~= "" then
         table.insert(lines, currentLine)
     end
-    
+
     return lines
 end
 

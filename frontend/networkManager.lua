@@ -4,7 +4,7 @@ function NetworkManager:new()
     self.client = nil
     self.isConnected = false
     self.host = "127.0.0.1"
-    self.port = 8080
+    self.port = 8081
     self.reconnectTimer = 0
     self.reconnectInterval = 5
     self.responseBuffer = ""

@@ -253,6 +253,7 @@ class UnifiedMCPClient:
             # Get available tools from all connected servers
             tools_raw = await self.get_tools()
             available_tools = []
+            tool_server_map = {}
             
             for tool in tools_raw:
                 tool_info = {
@@ -260,10 +261,10 @@ class UnifiedMCPClient:
                     "description": tool.description, 
                     "input_schema": tool.inputSchema
                 }
+                available_tools.append(tool_info)
                 # Add server info for tool routing
                 if hasattr(tool, '_server_name'):
-                    tool_info['_server_name'] = tool._server_name
-                available_tools.append(tool_info)
+                    tool_server_map[tool.name] = tool._server_name
 
             tool_names = [f"{tool['name']} ({tool.get('_server_name', 'unknown')})" for tool in available_tools]
             print(f"Available tools: {tool_names}")

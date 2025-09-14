@@ -1,0 +1,10 @@
+[project]
+name = "cloud-mcp-jokes"
+version = "0.1.0"
+description = "Deploying a MCP server for telling jokes on Cloud Run"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.66.0",
+    "fastmcp==2.6.1",
+    "python-dotenv>=1.1.1",
+]
