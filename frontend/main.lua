@@ -57,7 +57,7 @@ function love.update(dt)
     networkManager:update(dt)
 
     chat.queryInput:update(dt)
-    sidebar.createChatButton:update(dt)
+    sidebar:update(dt)
 
     width = love.graphics.getWidth()
     height = love.graphics.getHeight()
