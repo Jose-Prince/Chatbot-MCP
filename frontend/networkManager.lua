@@ -12,12 +12,12 @@ function NetworkManager:new()
     self.waitingForResponse = false
     self.lastMessageTime = 0
     self.responseTimeout = 30
-    self.debugMode = true  -- Enable debug logging
+    self.debugMode = false
 end
 
 function NetworkManager:connect()
     if self.debugMode then
-        print("🔄 Attempting to connect to " .. self.host .. ":" .. self.port)
+        print("Trying to connect to " .. self.host .. ":" .. self.port)
     end
     
     if self.client then
@@ -25,18 +25,18 @@ function NetworkManager:connect()
     end
 
     self.client = socket.tcp()
-    self.client:settimeout(0.001) -- Very short timeout for non-blocking
+    self.client:settimeout(0.001)
 
     local success, err = self.client:connect(self.host, self.port)
     if success then
         self.isConnected = true
         if self.debugMode then
-            print("✓ Connected to MCP server!")
+            print("Connected to MCP server!")
         end
         return true
     else
         if self.debugMode then
-            print("✗ Connection failed:", err)
+            print("Connection failed:", err)
         end
         self.isConnected = false
         return false
@@ -44,25 +44,23 @@ function NetworkManager:connect()
 end
 
 function NetworkManager:update(dt)
-    -- Handle reconnection if disconnected
     if not self.isConnected then
         self.reconnectTimer = self.reconnectTimer + dt
         if self.reconnectTimer >= self.reconnectInterval then
             self.reconnectTimer = 0
             if self.debugMode then
-                print("🔄 Attempting to reconnect...")
+                print("Attempting to reconnect...")
             end
             self:connect()
         end
         return
     end
 
-    -- Check for response timeout
     if self.waitingForResponse then
         local currentTime = os.clock()
         if currentTime - self.lastMessageTime > self.responseTimeout then
             if self.debugMode then
-                print("⏰ Response timeout")
+                print("Response timeout")
             end
             self.waitingForResponse = false
             if chat then
@@ -71,23 +69,19 @@ function NetworkManager:update(dt)
         end
     end
 
-    -- Check for incoming data
     self:receiveData()
 
-    -- Send any pending messages
     self:sendPendingMessages()
 end
 
 function NetworkManager:receiveData()
     if not self.client or not self.isConnected then return end
 
-    -- Try to receive data with different methods
     local data, err, partial = self.client:receive("*a")
     
-    -- Handle partial data
     if partial and partial ~= "" then
         if self.debugMode then
-            print("📥 Partial data received (" .. #partial .. " bytes):", partial)
+            print("Partial data received (" .. #partial .. " bytes):", partial)
         end
         data = partial
         err = nil
@@ -95,45 +89,42 @@ function NetworkManager:receiveData()
 
     if data and data ~= "" then
         if self.debugMode then
-            print("📥 Full data received (" .. #data .. " bytes):", data)
+            print("Full data received (" .. #data .. " bytes):", data)
         end
         self.responseBuffer = self.responseBuffer .. data
         self:processResponses()
     elseif err == "closed" then
         if self.debugMode then
-            print("🔌 Connection closed by server")
+            print("Connection closed by server")
         end
         self.isConnected = false
         self.client = nil
         self.waitingForResponse = false
     elseif err == "timeout" then
-        -- This is normal for non-blocking sockets, don't log it
     elseif err then
         if self.debugMode then
-            print("❌ Error receiving data:", err)
+            print("Error receiving data:", err)
         end
-        -- Don't disconnect on other errors, might be temporary
     end
 end
 
 function NetworkManager:processResponses()
     if self.debugMode then
-        print("🔍 Processing response buffer (length: " .. #self.responseBuffer .. "):", self.responseBuffer)
+        print("Processing response buffer (length: " .. #self.responseBuffer .. "):", self.responseBuffer)
     end
-    
-    -- Process complete lines (responses should end with newline)
+
     while true do
         local lineEnd = self.responseBuffer:find("\n")
         if not lineEnd then
             break
         end
-        
+
         local line = self.responseBuffer:sub(1, lineEnd - 1)
         self.responseBuffer = self.responseBuffer:sub(lineEnd + 1)
-        
+
         if self:trim(line) ~= "" then
             if self.debugMode then
-                print("📨 Processing complete line:", line)
+                print("Processing complete line:", line)
             end
             self:handleResponse(line)
         end
@@ -142,24 +133,23 @@ end
 
 function NetworkManager:handleResponse(responseData)
     if self.debugMode then
-        print("🔍 Handling response:", responseData)
+        print("Handling response:", responseData)
     end
     self.waitingForResponse = false
 
-    -- First, try to parse as JSON
     local success, response = pcall(function()
         return json.decode(responseData)
     end)
 
     if success and response and type(response) == "table" then
         if self.debugMode then
-            print("✓ JSON parsed successfully - Status:", response.status, "Data:", response.data, "Error:", response.error)
+            print("JSON parsed successfully - Status:", response.status, "Data:", response.data, "Error:", response.error)
         end
-        
+
         if response.status == "success" then
             local data = response.data or "Empty response"
             if self.debugMode then
-                print("✓ Success response, adding to chat:", data)
+                print("Success response, adding to chat:", data)
             end
             if chat then
                 chat:addMessage("Assistant", tostring(data))
@@ -167,14 +157,14 @@ function NetworkManager:handleResponse(responseData)
         elseif response.status == "error" then
             local error = response.error or "Unknown error"
             if self.debugMode then
-                print("❌ Error response:", error)
+                print("Error response:", error)
             end
             if chat then
                 chat:addMessage("Error", "Error: " .. tostring(error))
             end
         else
             if self.debugMode then
-                print("⚠️ Unknown status:", response.status)
+                print("Unknown status:", response.status)
             end
             if chat then
                 chat:addMessage("System", "Unknown response: " .. tostring(response.status))
@@ -182,11 +172,10 @@ function NetworkManager:handleResponse(responseData)
         end
     else
         if self.debugMode then
-            print("⚠️ JSON parsing failed, treating as plain text")
+            print("JSON parsing failed, treating as plain text")
             print("Parse error - success:", success, "response type:", type(response))
         end
-        
-        -- If JSON parsing fails, treat as plain text
+
         if chat then
             chat:addMessage("Assistant", tostring(responseData))
         end
@@ -195,35 +184,33 @@ end
 
 function NetworkManager:sendMessage(message)
     if self.debugMode then
-        print("📤 Attempting to send message:", message)
+        print("Attempting to send message:", message)
     end
-    
+
     if not self.isConnected then
         table.insert(self.pendingMessages, message)
         if self.debugMode then
-            print("📋 Message queued (not connected):", message)
+            print("Message queued (not connected):", message)
         end
         return false
     end
 
-    -- Add newline to ensure proper message separation
     local messageWithNewline = message .. "\n"
     local success, err = self.client:send(messageWithNewline)
 
     if success then
         if self.debugMode then
-            print("📤 Message sent successfully:", message)
+            print("Message sent successfully:", message)
         end
         self.waitingForResponse = true
         self.lastMessageTime = os.clock()
         return true
     else
         if self.debugMode then
-            print("❌ Failed to send message:", err)
+            print("Failed to send message:", err)
         end
         self.isConnected = false
         self.waitingForResponse = false
-        -- Add message back to pending queue
         table.insert(self.pendingMessages, message)
         return false
     end
@@ -235,10 +222,9 @@ function NetworkManager:sendPendingMessages()
     while #self.pendingMessages > 0 do
         local message = table.remove(self.pendingMessages, 1)
         if self.debugMode then
-            print("📤 Sending pending message:", message)
+            print("Sending pending message:", message)
         end
         if not self:sendMessage(message) then
-            -- Re-add message to front of queue if send failed
             table.insert(self.pendingMessages, 1, message)
             break
         end
@@ -265,7 +251,7 @@ end
 
 function NetworkManager:close()
     if self.debugMode then
-        print("🔌 Closing network connection...")
+        print("Closing network connection...")
     end
     if self.client then
         self.client:close()
@@ -275,7 +261,6 @@ function NetworkManager:close()
     self.waitingForResponse = false
 end
 
--- Helper function to trim whitespace
 function NetworkManager:trim(s)
     if not s then return "" end
     return (s:gsub("^%s*(.-)%s*$", "%1"))

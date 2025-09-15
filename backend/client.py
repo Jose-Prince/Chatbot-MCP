@@ -57,7 +57,7 @@ class UnifiedMCPClient:
     async def connect_to_remote_server(self, server_name: str, server_url: str):
         """Connect to a remote MCP server and keep the client alive"""
         client = FastMCPClient(server_url)
-        await client.__aenter__()  # Inicia la conexión async
+        await client.__aenter__()
         tools = await client.list_tools()
         print(f"Connected to REMOTE server {server_name} with tools: {[tool.name for tool in tools]}")
         self.connections[server_name] = {
@@ -79,7 +79,6 @@ class UnifiedMCPClient:
                 client = conn["client"]
                 return await client.list_tools()
         else:
-            # Get tools from all connected servers
             all_tools = []
             for srv_name, conn in self.connections.items():
                 try:
@@ -87,7 +86,6 @@ class UnifiedMCPClient:
                         response = await conn["session"].list_tools()
                         tools = response.tools
                     else:
-                        # No crear un nuevo cliente, usar el existente
                         client = conn["client"]
                         tools = await client.list_tools()
         
@@ -113,7 +111,6 @@ class UnifiedMCPClient:
         """Find which server has the specified tool"""
         for server_name in self.connections.keys():
             try:
-                # This would need to be cached for efficiency in a real implementation
                 asyncio.create_task(self._check_tool_exists(server_name, tool_name))
             except:
                 continue
@@ -249,7 +246,6 @@ class UnifiedMCPClient:
             messages.append(user_message)
             self.add_to_conversation_history(conversation_id, "user", query)
 
-            # Get available tools from all connected servers
             tools_raw = await self.get_tools()
             available_tools = []
             tool_server_map = {}
@@ -261,7 +257,6 @@ class UnifiedMCPClient:
                     "input_schema": tool.inputSchema
                 }
                 available_tools.append(tool_info)
-                # Add server info for tool routing
                 if hasattr(tool, '_server_name'):
                     tool_server_map[tool.name] = tool._server_name
 
@@ -279,7 +274,6 @@ class UnifiedMCPClient:
 
             print(f"Claude response received with {len(anthropic_response.content)} content blocks")
 
-            # Process Claude's response
             assistant_content = []
             tool_calls = []
 
@@ -306,7 +300,6 @@ class UnifiedMCPClient:
                 
                 for tool_call in tool_calls:
                     try:
-                        # Find which server has this tool
                         target_server = None
                         for tool_info in available_tools:
                             if tool_info['name'] == tool_call.name:
@@ -314,16 +307,13 @@ class UnifiedMCPClient:
                                 break
                         
                         if not target_server:
-                            # Fallback: try the preferred server or first available
                             target_server = preferred_server or list(self.connections.keys())[0]
                         
                         print(f"Calling tool {tool_call.name} on server {target_server}")
                         tool_result = await self.call_tool(target_server, tool_call.name, tool_call.input)
                         
-                        # Handle results from both local and remote servers
                         conn_type = self.connections[target_server]["type"]
                         if conn_type == 'local':
-                            # Local server result handling
                             if hasattr(tool_result, 'content'):
                                 if isinstance(tool_result.content, list):
                                     content_text = "".join([
@@ -334,7 +324,6 @@ class UnifiedMCPClient:
                             else:
                                 content_text = str(tool_result)
                         else:
-                            # Remote server result handling
                             if isinstance(tool_result, list) and len(tool_result) > 0:
                                 if hasattr(tool_result[0], 'text'):
                                     content_text = tool_result[0].text
@@ -482,7 +471,6 @@ async def main():
         print("  With TCP port:    python unified_client.py mcp-server-git --tcp-port 9090")
         sys.exit(1)
 
-    # Parse arguments
     servers = []
     tcp_port = 8080
     

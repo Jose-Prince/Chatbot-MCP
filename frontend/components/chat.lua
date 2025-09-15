@@ -136,7 +136,6 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
     local bubbleColor = self.bubbleColors[message.sender] or {0.3, 0.3, 0.3, 1}
     local textColor = self.textColors[message.sender] or {1, 1, 1, 1}
 
-    -- Find the widest line to determine bubble width
     local maxLineWidth = 0
     for _, line in ipairs(wrappedText) do
         local lineWidth = self.font:getWidth(line)
@@ -147,7 +146,6 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
 
     local bubbleWidth = math.min(maxLineWidth + self.bubblePadding * 2, maxBubbleWidth)
 
-    -- Position bubble (right for user, left for others)
     local bubbleX
     if isFromUser then
         bubbleX = areaX + areaWidth - bubbleWidth - self.bubbleMargin
@@ -155,7 +153,7 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
         bubbleX = areaX + self.bubbleMargin
     end
 
-    -- Draw bubble
+    -- Draw background text
     love.graphics.setColor(bubbleColor)
     love.graphics.rectangle("fill", bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8, 8)
 
@@ -165,11 +163,11 @@ function Chat:drawMessageBubbleAtPosition(message, areaX, bubbleY, areaWidth, ma
     for _, line in ipairs(wrappedText) do
         local textX
         if isFromUser then
-            -- Right align text for user
+            -- Right align for user
             local lineWidth = self.font:getWidth(line)
             textX = bubbleX + bubbleWidth - lineWidth - self.bubblePadding
         else
-            -- Left align text for others
+            -- Left align for others
             textX = bubbleX + self.bubblePadding
         end
 
@@ -185,14 +183,11 @@ function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidt
     local bubbleColor = self.bubbleColors[message.sender] or {0.3, 0.3, 0.3, 1}
     local textColor = self.textColors[message.sender] or {1, 1, 1, 1}
 
-    -- Wrap text to fit bubble width
     local wrappedText = self:wrapText(message.content, maxBubbleWidth - self.bubblePadding * 2)
 
-    -- Calculate bubble dimensions
     local textHeight = #wrappedText * self.font:getHeight()
     local bubbleHeight = textHeight + self.bubblePadding * 2
 
-    -- Find the widest line to determine bubble width
     local maxLineWidth = 0
     for _, line in ipairs(wrappedText) do
         local lineWidth = self.font:getWidth(line)
@@ -203,7 +198,6 @@ function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidt
 
     local bubbleWidth = math.min(maxLineWidth + self.bubblePadding * 2, maxBubbleWidth)
 
-    -- Position bubble (right for user, left for others)
     local bubbleX
     if isFromUser then
         bubbleX = areaX + areaWidth - bubbleWidth - self.bubbleMargin
@@ -213,40 +207,19 @@ function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidt
 
     local bubbleY = startY
 
-    -- Draw bubble
     love.graphics.setColor(bubbleColor)
     love.graphics.rectangle("fill", bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8, 8)
-    
-    -- Draw bubble tail (WhatsApp-style pointer)
-    if isFromUser then
-        -- Right tail for user messages
-        local tailPoints = {
-            bubbleX + bubbleWidth, bubbleY + bubbleHeight - 10,
-            bubbleX + bubbleWidth + 8, bubbleY + bubbleHeight - 5,
-            bubbleX + bubbleWidth, bubbleY + bubbleHeight - 2
-        }
-        love.graphics.polygon("fill", tailPoints)
-    else
-        -- Left tail for other messages
-        local tailPoints = {
-            bubbleX, bubbleY + bubbleHeight - 10,
-            bubbleX - 8, bubbleY + bubbleHeight - 5,
-            bubbleX, bubbleY + bubbleHeight - 2
-        }
-        love.graphics.polygon("fill", tailPoints)
-    end
-    
-    -- Draw text
+
     love.graphics.setColor(textColor)
     local textY = bubbleY + self.bubblePadding
     for _, line in ipairs(wrappedText) do
         local textX
         if isFromUser then
-            -- Right align text in user bubbles
+            -- Right align text 
             local lineWidth = self.font:getWidth(line)
             textX = bubbleX + bubbleWidth - lineWidth - self.bubblePadding
         else
-            -- Left align text in other bubbles
+            -- Left align text 
             textX = bubbleX + self.bubblePadding
         end
 
@@ -255,8 +228,6 @@ function Chat:drawMessageBubble(message, areaX, startY, areaWidth, maxBubbleWidt
         textY = textY + self.font:getHeight()
     end
 
-
-    -- Return next Y position
     return startY + bubbleHeight + self.bubbleMargin
 end
 
@@ -329,7 +300,6 @@ function Chat:scroll(amount)
     local visibleCount = self:getVisibleMessageCount()
     local maxOffset = math.max(0, #self.messages - visibleCount)
 
-    -- For bottom-up display: 0 = newest messages, higher = older messages
     self.scrollOffset = math.min(math.max(self.scrollOffset + amount, 0), maxOffset)
 end
 

@@ -60,7 +60,7 @@ end
 
 function Button:draw()
     if not self.isEnabled then
-        love.graphics.setColor(0.5, 0.5, 0.5, 0.7) -- Disabled color
+        love.graphics.setColor(0.5, 0.5, 0.5, 0.7)
     elseif self.isPressed and self.isHovered then
         love.graphics.setColor(self.pressedColor)
     elseif self.isHovered then
@@ -70,7 +70,6 @@ function Button:draw()
     end
 
     if self.cornerRadius > 0 then
-        -- Rounded rectangle (simple approximation)
         love.graphics.rectangle("fill", self.x, self.y, self.width, self.height, self.cornerRadius)
     else
         love.graphics.rectangle("fill", self.x, self.y, self.width, self.height)

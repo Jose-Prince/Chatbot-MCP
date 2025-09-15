@@ -38,10 +38,9 @@ function TextInput:draw()
     love.graphics.setLineWidth(2)
     love.graphics.rectangle("line", self.x, self.y, self.width, self.height)
 
-    -- Set scissor to prevent text from overflowing
+    -- Set scissor
     love.graphics.setScissor(self.x + self.padding, self.y + self.padding, self.width - 2 * self.padding, self.height - 2 * self.padding)
 
-    -- Set the font to be drawn
     love.graphics.setFont(self.font)
 
     -- Draw text
@@ -61,7 +60,6 @@ end
 function TextInput:textinput(t)
     if not self.hasFocus then return end
 
-    -- Allow adding text regardless of width
     self.text = self.text:sub(1, self.cursorPos) .. t .. self.text:sub(self.cursorPos + 1)
     self.cursorPos = self.cursorPos + #t
 end
