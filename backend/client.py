@@ -55,18 +55,18 @@ class UnifiedMCPClient:
         }
 
     async def connect_to_remote_server(self, server_name: str, server_url: str):
-        """Connect to a remote MCP server"""
-        try:
-            async with FastMCPClient(server_url) as client:
-                tools = await client.list_tools()
-                print(f"Connected to REMOTE server {server_name} with tools: {[tool.name for tool in tools]}")
-            self.connections[server_name] = {"type": "remote", "url": server_url}
-        except Exception as e:
-            print(f"Failed to connect to remote server {server_name}: {e}")
-            raise
+        """Connect to a remote MCP server and keep the client alive"""
+        client = FastMCPClient(server_url)
+        await client.__aenter__()  # Inicia la conexión async
+        tools = await client.list_tools()
+        print(f"Connected to REMOTE server {server_name} with tools: {[tool.name for tool in tools]}")
+        self.connections[server_name] = {
+            "type": "remote",
+            "client": client,
+            "tools": tools
+        }
 
     async def get_tools(self, server_name: str = None):
-        """Get tools from a specific server or all servers"""
         if server_name:
             conn = self.connections.get(server_name)
             if not conn:
@@ -76,8 +76,8 @@ class UnifiedMCPClient:
                 response = await conn["session"].list_tools()
                 return response.tools
             else:
-                async with FastMCPClient(conn["url"]) as client:
-                    return await client.list_tools()
+                client = conn["client"]
+                return await client.list_tools()
         else:
             # Get tools from all connected servers
             all_tools = []
@@ -87,10 +87,10 @@ class UnifiedMCPClient:
                         response = await conn["session"].list_tools()
                         tools = response.tools
                     else:
-                        async with FastMCPClient(conn["url"]) as client:
-                            tools = await client.list_tools()
-                    
-                    # Add server info to tools
+                        # No crear un nuevo cliente, usar el existente
+                        client = conn["client"]
+                        tools = await client.list_tools()
+        
                     for tool in tools:
                         tool._server_name = srv_name
                     all_tools.extend(tools)
@@ -99,7 +99,6 @@ class UnifiedMCPClient:
             return all_tools
 
     async def call_tool(self, server_name: str, tool_name: str, tool_input: dict):
-        """Call a tool on a specific server"""
         conn = self.connections.get(server_name)
         if not conn:
             raise RuntimeError(f"No server {server_name} connected")
@@ -107,8 +106,8 @@ class UnifiedMCPClient:
         if conn["type"] == "local":
             return await conn["session"].call_tool(tool_name, tool_input)
         else:
-            async with FastMCPClient(conn["url"]) as client:
-                return await client.call_tool(tool_name, tool_input)
+            client = conn["client"]
+            return await client.call_tool(tool_name, tool_input)
 
     def find_tool_server(self, tool_name: str) -> Optional[str]:
         """Find which server has the specified tool"""
@@ -449,12 +448,17 @@ class UnifiedMCPClient:
             self.running = False
 
     async def cleanup(self):
-        """Clean up resources"""
         self.running = False
         if self.tcp_server:
             self.tcp_server.close()
             await self.tcp_server.wait_closed()
+
+        for conn in self.connections.values():
+            if conn["type"] == "remote" and "client" in conn:
+                await conn["client"].__aexit__(None, None, None)
+    
         await self.exit_stack.aclose()
+
 
 async def async_input(prompt: str = "") -> str:
     """Async input function"""
