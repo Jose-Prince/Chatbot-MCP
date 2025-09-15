@@ -332,3 +332,4 @@ function Chat:scroll(amount)
     -- For bottom-up display: 0 = newest messages, higher = older messages
     self.scrollOffset = math.min(math.max(self.scrollOffset + amount, 0), maxOffset)
 end
+

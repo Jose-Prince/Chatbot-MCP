@@ -137,7 +137,11 @@ function love.keyreleased(key)
 end
 
 function love.wheelmoved(x, y)
-    print("moving scroll")
+    if y > 0 then
+        chat:scroll(1)
+    elseif y < 0 then
+        chat:scroll(-1)
+    end
 end
 
 

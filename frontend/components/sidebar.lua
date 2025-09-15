@@ -66,9 +66,9 @@ function Sidebar:draw(width, height, sideBarWidth)
         local dist = math.sqrt(dx * dx + dy * dy)
 
         if dist <= radius then
-            love.graphics.setColor(1, 0, 0, 1) -- rojo brillante en hover
+            love.graphics.setColor(1, 0, 0, 1)
         else
-            love.graphics.setColor(0.2, 0.2, 0.2, 1) -- gris cuando no hay hover
+            love.graphics.setColor(0.2, 0.2, 0.2, 1)
         end
         love.graphics.circle("fill", cx, cy, radius)
 
